@@ -20,7 +20,7 @@ let currentDealId = null;
 let mapSignature = null;
 let mapComments = null;
 
-// --- FERRAMENTA DE LOG (Silenciosa) ---
+// --- FERRAMENTA DE LOG ---
 function logToScreen(msg) {
     console.log(msg);
 }
@@ -42,7 +42,6 @@ if (typeof BX24 !== 'undefined') {
             currentTaskId = placement.options.taskId;
         }
         
-        // Tenta descobrir o Deal vinculado à Tarefa
         if (currentTaskId && !currentDealId) {
             findDealFromTask();
         }
@@ -77,7 +76,7 @@ function loadAppConfiguration() {
     });
 }
 
-// --- CONFIGURAÇÃO ---
+// --- PAINEL DE CONFIGURAÇÃO ---
 function openConfigPanel() {
     configPanel.innerHTML = `
         <div style="background:white; padding:20px; border-radius:8px; width:90%; max-width:400px; text-align:left;">
@@ -144,7 +143,7 @@ function saveNewConfig() {
     });
 }
 
-// --- LÓGICA DO BOTÃO SALVAR E CONCLUIR ---
+// --- LÓGICA DO BOTÃO ---
 btnSettings.addEventListener('click', openConfigPanel);
 
 function showMessage(text, type) {
@@ -163,67 +162,71 @@ canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (!isDrawing
 canvas.addEventListener('touchend', () => isDrawing = false);
 btnClear.addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); hasSignature = false; });
 
-// EVENTO PRINCIPAL
-btnSave.innerHTML = "SALVAR E CONCLUIR O.S."; // Muda o nome do botão para ficar claro
+// MUDAR TEXTO DO BOTÃO
+btnSave.innerHTML = "SALVAR E CONCLUIR O.S.";
 
 btnSave.addEventListener('click', () => {
     if (!hasSignature) { showMessage("Assinatura obrigatória.", "error"); return; }
     if (!mapSignature) { openConfigPanel(); return; }
     if (!currentDealId) { showMessage("Negócio não identificado.", "error"); return; }
 
-    btnSave.innerText = "PROCESSANDO...";
+    btnSave.innerText = "LENDO DADOS...";
     btnSave.disabled = true;
 
-    // 1. Busca Comentários da Tarefa
-    let commentsText = "Sem comentários.";
-    
+    let finalComments = "Sem comentários.";
+
     if(currentTaskId) {
-        BX24.callMethod('task.comment.item.getlist', { TASKID: currentTaskId }, function(res) {
-            if(!res.error() && res.data()) {
-                let list = res.data();
+        // Tenta buscar comentários (Lógica Reforçada)
+        BX24.callMethod('task.comment.item.getlist', { 'TASKID': currentTaskId }, function(res) {
+            
+            // DIAGNÓSTICO DE ERRO NA TELA (Só aparece se der erro)
+            if(res.error()) {
+                alert("Erro ao ler comentários: " + res.error());
+            } 
+            else if (res.data()) {
+                let data = res.data();
+                // O Bitrix as vezes retorna array, as vezes objeto. Normalizamos aqui:
+                let list = Array.isArray(data) ? data : Object.values(data);
+
                 if(list.length > 0) {
-                    commentsText = ""; // Limpa para preencher
-                    // Inverte para o mais recente ficar por último ou primeiro, conforme preferir.
-                    // O padrão do Bitrix vem do mais antigo pro mais novo.
+                    finalComments = "";
                     list.forEach(c => {
-                        let msg = c.POST_MESSAGE.replace(/<[^>]*>?/gm, '').trim();
+                        let msg = c.POST_MESSAGE ? c.POST_MESSAGE.replace(/<[^>]*>?/gm, '').trim() : "";
                         if(msg) {
-                            commentsText += `[${new Date(c.POST_DATE).toLocaleDateString()} ${new Date(c.POST_DATE).toLocaleTimeString().slice(0,5)}] ${c.AUTHOR_NAME}:\n${msg}\n\n`;
+                            let dataHora = new Date(c.POST_DATE).toLocaleString('pt-BR');
+                            finalComments += `🗓️ ${dataHora} - ${c.AUTHOR_NAME}:\n${msg}\n\n`;
                         }
                     });
                 }
-            } else {
-                 console.warn("Aviso: Nenhum comentário retornado ou erro de permissão.", res.error());
             }
             
-            // Continua o fluxo independente de ter achado comentários ou não
-            enviarParaDealEConcluir(commentsText);
+            // Segue o fluxo mesmo se não achou comentários
+            enviarParaDealEConcluir(finalComments);
         });
     } else {
         enviarParaDealEConcluir("Tarefa não vinculada.");
     }
 });
 
-function enviarParaDealEConcluir(finalComments) {
-    btnSave.innerText = "ENVIANDO DADOS...";
+function enviarParaDealEConcluir(commentsText) {
+    btnSave.innerText = "ENVIANDO...";
     const content = canvas.toDataURL('image/png').split(',')[1];
     
     let fields = {};
     fields[mapSignature] = { "fileData": ["assinatura_os.png", content] };
     
     if (mapComments) {
-        fields[mapComments] = finalComments;
+        fields[mapComments] = commentsText;
     }
 
-    // 2. Atualiza o Negócio
     BX24.callMethod('crm.deal.update', { id: currentDealId, fields: fields }, function(res) {
         if (res.error()) {
             console.error(res.error());
             showMessage("Erro ao salvar no Negócio.", "error");
+            alert("Erro API Deal: " + res.error()); // Alerta para facilitar debug
             btnSave.innerText = "ERRO";
             btnSave.disabled = false;
         } else {
-            // 3. Conclui a Tarefa (Status 5)
             concluirTarefa();
         }
     });
@@ -231,7 +234,7 @@ function enviarParaDealEConcluir(finalComments) {
 
 function concluirTarefa() {
     if(!currentTaskId) {
-        showMessage("✅ Salvo! (Tarefa não encontrada para fechar)", "success");
+        showMessage("✅ Salvo! (Tarefa não encontrada)", "success");
         return;
     }
 
@@ -241,12 +244,12 @@ function concluirTarefa() {
     BX24.callMethod('tasks.task.update', { taskId: currentTaskId, fields: { STATUS: 5 } }, function(res) {
         if(res.error()) {
             console.error(res.error());
-            showMessage("⚠️ Dados salvos, mas erro ao concluir tarefa.", "info");
+            showMessage("⚠️ Salvo, mas erro ao concluir tarefa.", "info");
         } else {
             showMessage("✅ O.S. FINALIZADA COM SUCESSO!", "success");
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             hasSignature = false;
-            btnSave.style.display = 'none'; // Some com o botão para não clicar de novo
+            btnSave.style.display = 'none'; 
         }
     });
 }
