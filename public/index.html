@@ -2,10 +2,69 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Assinatura O.S.</title>
+    <script src="//api.bitrix24.com/api/v1/"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 10px;
+            height: 100vh;
+            box-sizing: border-box;
+            overflow: hidden; /* Evita rolagem enquanto desenha */
+        }
+        h3 { color: #535c69; margin-bottom: 15px; }
+        
+        canvas {
+            background-color: #fff;
+            border: 2px solid #c6cdd3;
+            border-radius: 4px;
+            cursor: crosshair;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            touch-action: none; /* Essencial para funcionar no celular */
+        }
+
+        .buttons {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            max-width: 350px;
+        }
+
+        button {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .btn-limpar { background-color: #fff; border: 1px solid #c6cdd3; color: #535c69; }
+        .btn-salvar { background-color: #3bc8f5; color: #fff; } /* Azul Bitrix */
+    </style>
 </head>
 <body>
-    <h1>App de Assinatura</h1>
-    <p>Frontend carregado com sucesso.</p>
+
+    <h3>Assine abaixo:</h3>
+    
+    <canvas id="signature-pad" width="340" height="250"></canvas>
+
+    <div class="buttons">
+        <button class="btn-limpar" id="btn-clear">Limpar</button>
+        <button class="btn-salvar" id="btn-save">Salvar</button>
+    </div>
+
+    <script src="script.js"></script>
+
 </body>
 </html>
