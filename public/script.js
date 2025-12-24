@@ -102,7 +102,7 @@ function openConfigPanel() {
 
 function closeConfigPanel() { configPanel.style.display = 'none'; }
 
-// --- CARREGAR CAMPOS (COM LÓGICA DE NOME CORRIGIDA) ---
+// --- CARREGAR CAMPOS (VERSÃO FINAL COM CORREÇÃO DE NOMES) ---
 window.loadDealFields = function(forceRaw = false) {
     logToScreen("Consultando crm.deal.userfield.list...");
     fieldSelector.innerHTML = '<option>Consultando API...</option>';
@@ -121,22 +121,31 @@ window.loadDealFields = function(forceRaw = false) {
         let count = 0;
 
         fields.forEach(field => {
-            // LÓGICA DE NOME (LABEL):
-            // O Bitrix retorna labels em EDIT_FORM_LABEL, LIST_COLUMN_LABEL ou LIST_FILTER_LABEL.
-            // Geralmente é um objeto {pt: "Nome", en: "Name"}, mas as vezes é string.
+            // DETETIVE DE NOMES: Procura o nome em todos os lugares possíveis
+            let possibleLabels = [
+                field.EDIT_FORM_LABEL, 
+                field.LIST_COLUMN_LABEL, 
+                field.LIST_FILTER_LABEL
+            ];
             
-            let labelObj = field.EDIT_FORM_LABEL || field.LIST_COLUMN_LABEL || field.LIST_FILTER_LABEL;
-            let finalLabel = field.FIELD_NAME; // Começa com o ID como garantia
+            let prettyName = "";
 
-            if (labelObj) {
-                if (typeof labelObj === 'object') {
-                    // Tenta PT, BR, ou o primeiro valor que encontrar no objeto
-                    let extracted = labelObj.pt || labelObj.br || labelObj['pt-br'] || Object.values(labelObj)[0];
-                    if (extracted) finalLabel = extracted;
-                } else if (typeof labelObj === 'string' && labelObj.trim() !== "") {
-                    finalLabel = labelObj;
+            // Varre as possibilidades
+            for (let lbl of possibleLabels) {
+                if (lbl) {
+                    if (typeof lbl === 'string' && lbl.trim().length > 0) {
+                        prettyName = lbl;
+                        break;
+                    } else if (typeof lbl === 'object') {
+                        // Tenta pegar PT, BR, EN ou o primeiro valor que existir
+                        prettyName = lbl.pt || lbl.br || lbl.en || lbl['pt-br'] || Object.values(lbl)[0];
+                        if (prettyName) break;
+                    }
                 }
             }
+            
+            // Se falhar tudo, usa o ID
+            if (!prettyName) prettyName = field.FIELD_NAME;
 
             // Verifica tipos: File, Disk File ou String
             const isFile = (field.USER_TYPE_ID === 'file' || field.USER_TYPE_ID === 'disk_file' || field.USER_TYPE_ID === 'file_man');
@@ -145,8 +154,7 @@ window.loadDealFields = function(forceRaw = false) {
             // Exibe Arquivos E Strings (com ícones diferentes)
             if (isFile || isString || forceRaw) {
                 let icone = isFile ? '📁' : '📝';
-                // Mostra: 📁 Contrato Assinado (file)
-                optionsHtml += `<option value="${field.FIELD_NAME}">${icone} ${finalLabel} (${field.USER_TYPE_ID})</option>`;
+                optionsHtml += `<option value="${field.FIELD_NAME}">${icone} ${prettyName} (${field.USER_TYPE_ID})</option>`;
                 count++;
             }
         });
