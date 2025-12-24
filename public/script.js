@@ -20,18 +20,28 @@ let currentTaskId = null;
 let currentDealId = null;
 let targetFieldCode = null;
 
-// --- FERRAMENTA DE LOG ---
+// --- FERRAMENTA DE LOG (MODO SILENCIOSO) ---
 function logToScreen(msg) {
+    // Apenas no console do navegador (F12) para não poluir a tela do usuário
     console.log(msg);
-    debugLog.style.display = 'block';
-    debugLog.innerHTML += `> ${msg}\n`;
 }
 
 // --- INICIALIZAÇÃO ---
 if (typeof BX24 !== 'undefined') {
     logToScreen("Iniciando BX24...");
     BX24.init(function() {
-        // 1. Onde estou?
+        
+        // >>> LIMPEZA VISUAL <<<
+        // 1. Esconde a barra superior (azul)
+        if(statusTask && statusTask.parentElement) {
+            statusTask.parentElement.style.display = 'none';
+        }
+        // 2. Garante que o log de debug esteja invisível
+        if(debugLog) {
+            debugLog.style.display = 'none';
+        }
+
+        // --- LÓGICA DO APP (Continua rodando nos bastidores) ---
         const placement = BX24.placement.info();
         logToScreen(`Placement: ${placement.placement}`);
 
@@ -41,24 +51,16 @@ if (typeof BX24 !== 'undefined') {
             currentTaskId = placement.options.taskId;
         }
         
-        // Atualiza barra visual
-        statusTask.innerText = `Tarefa: ${currentTaskId || 'N/A'}`;
-        statusDeal.innerText = `Negócio: ${currentDealId || 'Procurando...'}`;
-
-        if(!currentTaskId && !currentDealId) {
-            logToScreen("ALERTA: Não consegui identificar ID nem da Tarefa nem do Negócio.");
-        }
-
-        // 2. Se estiver na Tarefa, tenta descobrir o Deal imediatamente
+        // Se estiver na Tarefa, tenta descobrir o Deal imediatamente
         if (currentTaskId && !currentDealId) {
             findDealFromTask();
         }
 
-        // 3. Carrega Configuração
+        // Carrega Configuração
         loadAppConfiguration();
     });
 } else {
-    logToScreen("ERRO FATAL: BX24 não encontrado.");
+    console.error("ERRO FATAL: BX24 não encontrado.");
 }
 
 function findDealFromTask() {
@@ -75,7 +77,6 @@ function findDealFromTask() {
             const dealStr = crmFields.find(item => item.startsWith('D_'));
             if (dealStr) {
                 currentDealId = dealStr.replace('D_', '');
-                statusDeal.innerText = `Negócio: #${currentDealId}`;
                 logToScreen(`Negócio vinculado encontrado: ${currentDealId}`);
             }
         }
@@ -102,12 +103,11 @@ function openConfigPanel() {
 
 function closeConfigPanel() { configPanel.style.display = 'none'; }
 
-// --- CARREGAR CAMPOS (MÉTODO CORRETO IGUAL AO CNPJ) ---
+// --- CARREGAR CAMPOS ---
 window.loadDealFields = function(forceRaw = false) {
-    logToScreen("Consultando crm.deal.fields (Método do App CNPJ)...");
+    logToScreen("Consultando crm.deal.fields...");
     fieldSelector.innerHTML = '<option>Consultando API...</option>';
     
-    // MUDANÇA: Usando crm.deal.fields em vez de userfield.list
     BX24.callMethod('crm.deal.fields', {}, function(result) {
         if (result.error()) {
             logToScreen("ERRO API: " + result.error());
@@ -115,29 +115,20 @@ window.loadDealFields = function(forceRaw = false) {
             return;
         }
 
-        const fields = result.data(); // Retorna um objeto, não um array
+        const fields = result.data(); 
         let optionsHtml = '<option value="">-- Selecione o campo --</option>';
         let count = 0;
 
-        // Itera sobre as chaves do objeto (ex: TITLE, OPPORTUNITY, UF_CRM_12345)
         for (let key in fields) {
-            // Filtra apenas campos personalizados (UF_) para não poluir a lista
-            // Se quiser ver campos nativos que aceitem arquivo, remova esse 'if'
             if (!key.startsWith('UF_')) continue;
 
             let fieldData = fields[key];
-            
-            // LÓGICA DO APP CNPJ:
             let label = fieldData.formLabel || fieldData.listLabel || fieldData.title || key;
+            let type = fieldData.type;
 
-            // Tipos
-            let type = fieldData.type; // No método .fields, a chave costuma ser 'type'
-
-            // Verifica tipos: File ou String
             const isFile = (type === 'file' || type === 'disk_file');
             const isString = (type === 'string'); 
             
-            // Lista arquivos E strings (com ícones)
             if (isFile || isString || forceRaw) {
                 let icone = isFile ? '📁' : '📝';
                 optionsHtml += `<option value="${key}">${icone} ${label} (${type})</option>`;
@@ -147,9 +138,6 @@ window.loadDealFields = function(forceRaw = false) {
 
         if (count === 0) {
             optionsHtml = '<option value="">Nenhum campo compatível (UF_) encontrado!</option>';
-            logToScreen("Atenção: Nenhum campo personalizado do tipo 'file' ou 'string' foi encontrado.");
-        } else {
-            logToScreen(`${count} campos carregados na lista.`);
         }
 
         fieldSelector.innerHTML = optionsHtml;
@@ -196,14 +184,13 @@ btnSave.addEventListener('click', () => {
     const content = canvas.toDataURL('image/png').split(',')[1];
     
     let fields = {};
-    // Estrutura para salvar arquivo no Bitrix
     fields[targetFieldCode] = { "fileData": ["assinatura.png", content] };
 
     BX24.callMethod('crm.deal.update', { id: currentDealId, fields: fields }, function(res) {
         btnSave.innerText = "SALVAR";
         if (res.error()) { 
-            logToScreen("Erro update: " + res.error()); 
-            showMessage("Erro ao salvar: Verifique se o campo selecionado aceita arquivos.", "error"); 
+            console.error("Erro update: " + res.error()); 
+            showMessage("Erro ao salvar.", "error"); 
         }
         else { 
             showMessage("✅ Assinatura salva!", "success"); 
