@@ -176,9 +176,9 @@ btnSave.addEventListener('click', () => {
     let finalComments = "Sem comentários.";
 
     if(currentTaskId) {
-        // CORREÇÃO: Nome do método corrigido para 'task.commentitem.getlist'
-        // Removemos o ponto extra entre comment e item
-        BX24.callMethod('task.commentitem.getlist', { 'TASKID': currentTaskId }, function(res) {
+        // CORREÇÃO: Voltamos para o método oficial com pontos 'task.comment.item.getlist'
+        // Agora com as permissões 'Forum' e 'Chat' ativas, ele deve funcionar.
+        BX24.callMethod('task.comment.item.getlist', { 'TASKID': currentTaskId }, function(res) {
             
             if(res.error()) {
                 console.error("Erro API Comentários:", res.error());
@@ -186,6 +186,7 @@ btnSave.addEventListener('click', () => {
             } 
             else if (res.data()) {
                 let data = res.data();
+                // O Bitrix pode retornar lista ou objeto, garantimos que seja lista
                 let list = Array.isArray(data) ? data : Object.values(data);
 
                 if(list.length > 0) {
