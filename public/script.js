@@ -102,7 +102,7 @@ function openConfigPanel() {
 
 function closeConfigPanel() { configPanel.style.display = 'none'; }
 
-// --- CARREGAR CAMPOS (COM LÓGICA MELHORADA DO APP CNPJ) ---
+// --- CARREGAR CAMPOS (COM LÓGICA DE NOME CORRIGIDA) ---
 window.loadDealFields = function(forceRaw = false) {
     logToScreen("Consultando crm.deal.userfield.list...");
     fieldSelector.innerHTML = '<option>Consultando API...</option>';
@@ -121,19 +121,20 @@ window.loadDealFields = function(forceRaw = false) {
         let count = 0;
 
         fields.forEach(field => {
-            // Lógica baseada no seu App CNPJ: Tenta pegar o Rótulo de várias formas
-            // O Bitrix retorna EDIT_FORM_LABEL ou LIST_COLUMN_LABEL, as vezes como objeto, as vezes string.
+            // LÓGICA DE NOME (LABEL):
+            // O Bitrix retorna labels em EDIT_FORM_LABEL, LIST_COLUMN_LABEL ou LIST_FILTER_LABEL.
+            // Geralmente é um objeto {pt: "Nome", en: "Name"}, mas as vezes é string.
             
-            let rawLabel = field.EDIT_FORM_LABEL || field.LIST_COLUMN_LABEL || field.FIELD_NAME;
-            let label = field.FIELD_NAME; // Fallback padrão
+            let labelObj = field.EDIT_FORM_LABEL || field.LIST_COLUMN_LABEL || field.LIST_FILTER_LABEL;
+            let finalLabel = field.FIELD_NAME; // Começa com o ID como garantia
 
-            if (rawLabel) {
-                if (typeof rawLabel === 'object') {
-                    // Tenta pegar PT, BR, ou o primeiro valor disponível no objeto
-                    label = rawLabel.pt || rawLabel.br || rawLabel['pt-br'] || Object.values(rawLabel)[0];
-                } else {
-                    // Se for string direta
-                    label = rawLabel;
+            if (labelObj) {
+                if (typeof labelObj === 'object') {
+                    // Tenta PT, BR, ou o primeiro valor que encontrar no objeto
+                    let extracted = labelObj.pt || labelObj.br || labelObj['pt-br'] || Object.values(labelObj)[0];
+                    if (extracted) finalLabel = extracted;
+                } else if (typeof labelObj === 'string' && labelObj.trim() !== "") {
+                    finalLabel = labelObj;
                 }
             }
 
@@ -141,10 +142,11 @@ window.loadDealFields = function(forceRaw = false) {
             const isFile = (field.USER_TYPE_ID === 'file' || field.USER_TYPE_ID === 'disk_file' || field.USER_TYPE_ID === 'file_man');
             const isString = (field.USER_TYPE_ID === 'string'); 
             
-            // Lista arquivos E strings (para garantir que a lista não fique vazia se não houver campo file)
+            // Exibe Arquivos E Strings (com ícones diferentes)
             if (isFile || isString || forceRaw) {
                 let icone = isFile ? '📁' : '📝';
-                optionsHtml += `<option value="${field.FIELD_NAME}">${icone} ${label} (${field.USER_TYPE_ID})</option>`;
+                // Mostra: 📁 Contrato Assinado (file)
+                optionsHtml += `<option value="${field.FIELD_NAME}">${icone} ${finalLabel} (${field.USER_TYPE_ID})</option>`;
                 count++;
             }
         });
