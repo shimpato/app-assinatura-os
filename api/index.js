@@ -1,6 +1,5 @@
 const app = require('express')();
 const bodyParser = require('body-parser');
-const path = require('path');
 
 // Aumenta limite para imagens e aceita dados de formulário (que o Bitrix envia ao instalar)
 app.use(bodyParser.json({ limit: '10mb' }));
@@ -11,15 +10,12 @@ app.get('/api', (req, res) => {
   res.json({ message: 'API Online.' });
 });
 
-// --- ROTA DE INSTALAÇÃO (O Bitrix chama essa rota ao instalar) ---
+// --- ROTA DE INSTALAÇÃO (O Bitrix chama essa rota ao validar e instalar) ---
 app.post('/install', (req, res) => {
     console.log("--- TENTATIVA DE INSTALAÇÃO ---");
-    console.log("Dados recebidos do Bitrix:", req.body);
-
-    // O Bitrix envia tokens de autenticação no corpo da requisição (req.body)
-    // AUTH_ID, REFRESH_ID, DOMAIN, etc.
+    // O Bitrix envia tokens aqui no req.body
     
-    // Respondemos com uma página HTML simples confirmando o sucesso
+    // Respondemos com HTML para confirmar a instalação visualmente
     res.setHeader('Content-Type', 'text/html');
     res.send(`
         <!DOCTYPE html>
@@ -31,8 +27,6 @@ app.post('/install', (req, res) => {
         </head>
         <body>
             <h1 style="color: green;">Instalação realizada com sucesso!</h1>
-            <p>O aplicativo de Assinatura foi instalado no seu portal.</p>
-            <p>Você já pode fechar esta janela.</p>
             <script>
                 // Finaliza a instalação na interface do Bitrix
                 BX24.init(function(){
@@ -47,14 +41,12 @@ app.post('/install', (req, res) => {
 // --- ROTA DE SALVAR ASSINATURA ---
 app.post('/api/save-signature', (req, res) => {
     try {
-        const { imageBase64, placementInfo } = req.body;
-
+        const { imageBase64 } = req.body;
         if (!imageBase64) return res.status(400).json({ error: 'Sem imagem.' });
 
         console.log("Recebi assinatura. Tamanho:", imageBase64.length);
         
-        // AQUI futuramente vamos usar os tokens para salvar no Bitrix
-        
+        // Aqui entraremos com a lógica de salvar no Bitrix depois
         res.json({ success: true, message: 'Assinatura recebida!' });
 
     } catch (error) {
