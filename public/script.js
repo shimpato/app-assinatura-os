@@ -16,11 +16,9 @@ let hasSignature = false;
 let currentTaskId = null;
 let currentDealId = null;
 
-// Variáveis de Mapeamento (Onde salvar cada coisa)
+// Variáveis de Mapeamento
 let mapSignature = null;
-let mapSummary = null;
-let mapDateStart = null;
-let mapDateEnd = null;
+let mapComments = null; // Antigo mapSummary
 
 // --- FERRAMENTA DE LOG (MODO SILENCIOSO) ---
 function logToScreen(msg) {
@@ -69,14 +67,11 @@ function findDealFromTask() {
 }
 
 function loadAppConfiguration() {
-    // Carrega todas as opções salvas
-    BX24.callMethod('app.option.get', { option: 'arseg_os_config' }, function(result) {
+    BX24.callMethod('app.option.get', { option: 'arseg_os_config_v2' }, function(result) {
         if(result.data()) {
             const config = result.data();
             mapSignature = config.signature;
-            mapSummary = config.summary;
-            mapDateStart = config.start;
-            mapDateEnd = config.end;
+            mapComments = config.comments;
             logToScreen("Configurações carregadas.");
         } else {
             // Se não tem config, tenta abrir o painel
@@ -85,25 +80,18 @@ function loadAppConfiguration() {
     });
 }
 
-// --- CONSTRUTOR DO PAINEL DE CONFIGURAÇÃO (DINÂMICO) ---
+// --- CONSTRUTOR DO PAINEL DE CONFIGURAÇÃO ---
 function openConfigPanel() {
-    // Injeta o HTML do painel novo dinamicamente para não precisar editar HTML
     configPanel.innerHTML = `
         <div style="background:white; padding:20px; border-radius:8px; width:90%; max-width:400px; text-align:left;">
             <h3 style="margin-top:0; color:#333;">⚙️ Configurar Campos O.S.</h3>
-            <p style="font-size:12px; color:#666; margin-bottom:15px">Mapeie onde cada dado da Tarefa deve ser salvo no Negócio:</p>
+            <p style="font-size:12px; color:#666; margin-bottom:15px">Mapeie onde salvar a Assinatura e os Comentários técnicos:</p>
             
             <label style="font-size:11px; font-weight:bold">🖊️ Campo de Assinatura (Arquivo)</label>
             <select id="sel-sig" style="width:100%; padding:8px; margin-bottom:10px; border:1px solid #ccc; border-radius:4px;"><option>Carregando...</option></select>
 
-            <label style="font-size:11px; font-weight:bold">📝 Resumo/Descrição (Texto)</label>
-            <select id="sel-sum" style="width:100%; padding:8px; margin-bottom:10px; border:1px solid #ccc; border-radius:4px;"><option>Carregando...</option></select>
-
-            <label style="font-size:11px; font-weight:bold">🕒 Início da Execução (Data/Hora)</label>
-            <select id="sel-start" style="width:100%; padding:8px; margin-bottom:10px; border:1px solid #ccc; border-radius:4px;"><option>Carregando...</option></select>
-
-            <label style="font-size:11px; font-weight:bold">🏁 Fim da Execução (Data/Hora)</label>
-            <select id="sel-end" style="width:100%; padding:8px; margin-bottom:20px; border:1px solid #ccc; border-radius:4px;"><option>Carregando...</option></select>
+            <label style="font-size:11px; font-weight:bold">💬 Comentários do Técnico (Texto/HTML)</label>
+            <select id="sel-com" style="width:100%; padding:8px; margin-bottom:20px; border:1px solid #ccc; border-radius:4px;"><option>Carregando...</option></select>
 
             <div style="display:flex; gap:10px;">
                 <button id="btn-save-cfg" style="flex:1; padding:10px; background:#2fc6f6; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">SALVAR</button>
@@ -117,11 +105,9 @@ function openConfigPanel() {
     configPanel.style.justifyContent = 'center';
     configPanel.style.alignItems = 'center';
 
-    // Adiciona eventos aos botões recém-criados
     document.getElementById('btn-save-cfg').onclick = saveNewConfig;
     document.getElementById('btn-cancel-cfg').onclick = () => configPanel.style.display = 'none';
 
-    // Carrega os campos
     loadDealFieldsForMapping();
 }
 
@@ -133,56 +119,38 @@ function loadDealFieldsForMapping() {
         
         let optsFile = '<option value="">-- Não salvar --</option>';
         let optsString = '<option value="">-- Não salvar --</option>';
-        let optsDate = '<option value="">-- Não salvar --</option>';
 
         for (let key in fields) {
-            // Apenas campos personalizados (UF_) ou campos chave nativos se necessário
             if (!key.startsWith('UF_')) continue;
 
             let f = fields[key];
             let label = f.formLabel || f.listLabel || f.title || key;
             let type = f.type;
 
-            // Monta opções baseadas no tipo
             if (type === 'file' || type === 'disk_file') {
                 optsFile += `<option value="${key}" ${key === mapSignature ? 'selected' : ''}>📁 ${label}</option>`;
-            } else if (type === 'string' || type === 'textarea') {
-                optsString += `<option value="${key}" ${key === mapSummary ? 'selected' : ''}>📝 ${label}</option>`;
-            } else if (type === 'datetime' || type === 'date') {
-                optsDate += `<option value="${key}" ${key === mapDateStart || key === mapDateEnd ? 'selected' : ''}>📅 ${label}</option>`;
+            } else if (type === 'string' || type === 'textarea') { // Aceita texto ou caixa de texto
+                optsString += `<option value="${key}" ${key === mapComments ? 'selected' : ''}>📝 ${label}</option>`;
             }
         }
 
-        // Popula os selects
         document.getElementById('sel-sig').innerHTML = optsFile;
-        document.getElementById('sel-sum').innerHTML = optsString;
-        document.getElementById('sel-start').innerHTML = optsDate.replace('selected', mapDateStart ? 'selected' : '');
-        
-        // Para o select de FIM, precisamos resetar o selected para verificar o mapDateEnd corretamente
-        // Reconstruindo simples para garantir seleção correta
-        let optsDateEnd = optsDate.replace(/selected/g, ''); 
-        // Pequena lógica de regex para selecionar o certo, mas simplificando:
-        document.getElementById('sel-end').innerHTML = optsDate; 
-        if(mapDateEnd) document.getElementById('sel-end').value = mapDateEnd;
-        if(mapDateStart) document.getElementById('sel-start').value = mapDateStart;
+        document.getElementById('sel-com').innerHTML = optsString;
     });
 }
 
 function saveNewConfig() {
     const newConfig = {
         signature: document.getElementById('sel-sig').value,
-        summary: document.getElementById('sel-sum').value,
-        start: document.getElementById('sel-start').value,
-        end: document.getElementById('sel-end').value
+        comments: document.getElementById('sel-com').value
     };
 
     if (!newConfig.signature) return alert("O campo de Assinatura é obrigatório!");
 
-    BX24.callMethod('app.option.set', { options: { 'arseg_os_config': newConfig } }, function(res) {
+    // Usando chave v2 para não conflitar com a config antiga
+    BX24.callMethod('app.option.set', { options: { 'arseg_os_config_v2': newConfig } }, function(res) {
         mapSignature = newConfig.signature;
-        mapSummary = newConfig.summary;
-        mapDateStart = newConfig.start;
-        mapDateEnd = newConfig.end;
+        mapComments = newConfig.comments;
         configPanel.style.display = 'none';
         showMessage("Configuração salva!", "success");
     });
@@ -207,29 +175,40 @@ canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (!isDrawing
 canvas.addEventListener('touchend', () => isDrawing = false);
 btnClear.addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); hasSignature = false; });
 
-// --- SALVAR TUDO (ASSINATURA + DADOS DA TAREFA) ---
+// --- SALVAR TUDO ---
 btnSave.addEventListener('click', () => {
     if (!hasSignature) { showMessage("Assine antes.", "error"); return; }
     if (!mapSignature) { openConfigPanel(); return; }
     if (!currentDealId) { showMessage("Negócio não identificado.", "error"); return; }
 
-    btnSave.innerText = "BUSCANDO DADOS...";
+    btnSave.innerText = "LENDO COMENTÁRIOS...";
 
-    // 1. Pega dados da Tarefa (se existir ID)
+    // Se tiver Tarefa vinculada, busca os comentários
     if(currentTaskId) {
-        BX24.callMethod('tasks.task.get', { taskId: currentTaskId }, function(resTask) {
-            let taskData = {};
-            if(!resTask.error()) {
-                taskData = resTask.data().task;
+        // Método específico para ler comentários da tarefa
+        BX24.callMethod('task.comment.item.getlist', { TASKID: currentTaskId }, function(res) {
+            let commentsText = "";
+            
+            if(!res.error() && res.data()) {
+                // Monta um texto único com todos os comentários
+                res.data().forEach(comment => {
+                    // Limpa tags HTML simples para ficar legível no campo de texto
+                    let textClean = comment.POST_MESSAGE.replace(/<[^>]*>?/gm, '');
+                    // Formato: [DATA] Autor: Mensagem
+                    commentsText += `🗓️ ${new Date(comment.POST_DATE).toLocaleDateString()} - ${comment.AUTHOR_NAME}:\n${textClean}\n\n`;
+                });
+            } else {
+                commentsText = "Nenhum comentário técnico encontrado na tarefa.";
             }
-            enviarParaDeal(taskData);
+
+            enviarParaDeal(commentsText);
         });
     } else {
-        enviarParaDeal({});
+        enviarParaDeal("Tarefa não identificada.");
     }
 });
 
-function enviarParaDeal(task) {
+function enviarParaDeal(finalComments) {
     btnSave.innerText = "ENVIANDO...";
     const content = canvas.toDataURL('image/png').split(',')[1];
     
@@ -238,19 +217,9 @@ function enviarParaDeal(task) {
     // 1. Campo Assinatura
     fields[mapSignature] = { "fileData": ["assinatura.png", content] };
 
-    // 2. Campo Resumo (Descrição da Tarefa)
-    if (mapSummary && task.description) {
-        fields[mapSummary] = task.description;
-    }
-
-    // 3. Campo Data Início (createdDate ou dateStart)
-    if (mapDateStart && (task.dateStart || task.createdDate)) {
-        fields[mapDateStart] = task.dateStart || task.createdDate;
-    }
-
-    // 4. Campo Data Fim (closedDate)
-    if (mapDateEnd && task.closedDate) {
-        fields[mapDateEnd] = task.closedDate;
+    // 2. Campo Comentários (se estiver mapeado)
+    if (mapComments) {
+        fields[mapComments] = finalComments;
     }
 
     // Atualiza o Negócio
@@ -261,7 +230,7 @@ function enviarParaDeal(task) {
             showMessage("Erro ao salvar.", "error"); 
         }
         else { 
-            showMessage("✅ Dados e Assinatura salvos!", "success"); 
+            showMessage("✅ Salvo com sucesso!", "success"); 
             ctx.clearRect(0,0,340,250); 
             hasSignature = false; 
         }
