@@ -35,7 +35,7 @@ const htmlInterface = `
 </html>
 `;
 
-// Rota Principal (Aceita tanto GET quanto POST para abrir o app)
+// Rota Principal (Aceita tanto GET quanto POST para abrir o app e resolver o erro 405)
 app.all('/', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
     res.send(htmlInterface);
