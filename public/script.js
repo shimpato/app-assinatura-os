@@ -102,66 +102,52 @@ function openConfigPanel() {
 
 function closeConfigPanel() { configPanel.style.display = 'none'; }
 
-// --- CARREGAR CAMPOS (VERSÃO FINAL COM CORREÇÃO DE NOMES) ---
+// --- CARREGAR CAMPOS (MÉTODO CORRETO IGUAL AO CNPJ) ---
 window.loadDealFields = function(forceRaw = false) {
-    logToScreen("Consultando crm.deal.userfield.list...");
+    logToScreen("Consultando crm.deal.fields (Método do App CNPJ)...");
     fieldSelector.innerHTML = '<option>Consultando API...</option>';
     
-    BX24.callMethod('crm.deal.userfield.list', {}, function(result) {
+    // MUDANÇA: Usando crm.deal.fields em vez de userfield.list
+    BX24.callMethod('crm.deal.fields', {}, function(result) {
         if (result.error()) {
             logToScreen("ERRO API: " + result.error());
             fieldSelector.innerHTML = '<option>Erro na consulta</option>';
             return;
         }
 
-        const fields = result.data();
-        logToScreen(`Campos retornados: ${fields.length}`);
-        
+        const fields = result.data(); // Retorna um objeto, não um array
         let optionsHtml = '<option value="">-- Selecione o campo --</option>';
         let count = 0;
 
-        fields.forEach(field => {
-            // DETETIVE DE NOMES: Procura o nome em todos os lugares possíveis
-            let possibleLabels = [
-                field.EDIT_FORM_LABEL, 
-                field.LIST_COLUMN_LABEL, 
-                field.LIST_FILTER_LABEL
-            ];
-            
-            let prettyName = "";
+        // Itera sobre as chaves do objeto (ex: TITLE, OPPORTUNITY, UF_CRM_12345)
+        for (let key in fields) {
+            // Filtra apenas campos personalizados (UF_) para não poluir a lista
+            // Se quiser ver campos nativos que aceitem arquivo, remova esse 'if'
+            if (!key.startsWith('UF_')) continue;
 
-            // Varre as possibilidades
-            for (let lbl of possibleLabels) {
-                if (lbl) {
-                    if (typeof lbl === 'string' && lbl.trim().length > 0) {
-                        prettyName = lbl;
-                        break;
-                    } else if (typeof lbl === 'object') {
-                        // Tenta pegar PT, BR, EN ou o primeiro valor que existir
-                        prettyName = lbl.pt || lbl.br || lbl.en || lbl['pt-br'] || Object.values(lbl)[0];
-                        if (prettyName) break;
-                    }
-                }
-            }
+            let fieldData = fields[key];
             
-            // Se falhar tudo, usa o ID
-            if (!prettyName) prettyName = field.FIELD_NAME;
+            // LÓGICA DO APP CNPJ:
+            let label = fieldData.formLabel || fieldData.listLabel || fieldData.title || key;
 
-            // Verifica tipos: File, Disk File ou String
-            const isFile = (field.USER_TYPE_ID === 'file' || field.USER_TYPE_ID === 'disk_file' || field.USER_TYPE_ID === 'file_man');
-            const isString = (field.USER_TYPE_ID === 'string'); 
+            // Tipos
+            let type = fieldData.type; // No método .fields, a chave costuma ser 'type'
+
+            // Verifica tipos: File ou String
+            const isFile = (type === 'file' || type === 'disk_file');
+            const isString = (type === 'string'); 
             
-            // Exibe Arquivos E Strings (com ícones diferentes)
+            // Lista arquivos E strings (com ícones)
             if (isFile || isString || forceRaw) {
                 let icone = isFile ? '📁' : '📝';
-                optionsHtml += `<option value="${field.FIELD_NAME}">${icone} ${prettyName} (${field.USER_TYPE_ID})</option>`;
+                optionsHtml += `<option value="${key}">${icone} ${label} (${type})</option>`;
                 count++;
             }
-        });
+        }
 
         if (count === 0) {
-            optionsHtml = '<option value="">Nenhum campo compatível encontrado!</option>';
-            logToScreen("Atenção: A API retornou campos, mas nenhum tipo 'file' ou 'string' compatível.");
+            optionsHtml = '<option value="">Nenhum campo compatível (UF_) encontrado!</option>';
+            logToScreen("Atenção: Nenhum campo personalizado do tipo 'file' ou 'string' foi encontrado.");
         } else {
             logToScreen(`${count} campos carregados na lista.`);
         }
