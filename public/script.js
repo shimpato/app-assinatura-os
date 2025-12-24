@@ -176,16 +176,16 @@ btnSave.addEventListener('click', () => {
     let finalComments = "Sem comentários.";
 
     if(currentTaskId) {
-        // Tenta buscar comentários (Lógica Reforçada)
-        BX24.callMethod('task.comment.item.getlist', { 'TASKID': currentTaskId }, function(res) {
+        // CORREÇÃO: Nome do método corrigido para 'task.commentitem.getlist'
+        // Removemos o ponto extra entre comment e item
+        BX24.callMethod('task.commentitem.getlist', { 'TASKID': currentTaskId }, function(res) {
             
-            // DIAGNÓSTICO DE ERRO NA TELA (Só aparece se der erro)
             if(res.error()) {
-                alert("Erro ao ler comentários: " + res.error());
+                console.error("Erro API Comentários:", res.error());
+                // Não trava o fluxo, apenas avisa no console
             } 
             else if (res.data()) {
                 let data = res.data();
-                // O Bitrix as vezes retorna array, as vezes objeto. Normalizamos aqui:
                 let list = Array.isArray(data) ? data : Object.values(data);
 
                 if(list.length > 0) {
@@ -200,7 +200,6 @@ btnSave.addEventListener('click', () => {
                 }
             }
             
-            // Segue o fluxo mesmo se não achou comentários
             enviarParaDealEConcluir(finalComments);
         });
     } else {
@@ -223,7 +222,6 @@ function enviarParaDealEConcluir(commentsText) {
         if (res.error()) {
             console.error(res.error());
             showMessage("Erro ao salvar no Negócio.", "error");
-            alert("Erro API Deal: " + res.error()); // Alerta para facilitar debug
             btnSave.innerText = "ERRO";
             btnSave.disabled = false;
         } else {
