@@ -10,12 +10,9 @@ let currentTaskId = null;
 // --- INICIALIZAÇÃO BITRIX ---
 if (typeof BX24 !== 'undefined') {
     BX24.init(function() {
-        // Ajusta o tamanho da janela do app automaticamente
-        // BX24.resizeWindow(window.innerWidth, 400);
-
         const placement = BX24.placement.info();
         console.log("Contexto:", placement);
-
+        
         // Tenta pegar o ID da Tarefa
         if (placement.options && placement.options.taskId) {
             currentTaskId = placement.options.taskId;
@@ -38,13 +35,12 @@ function getTouchPos(canvasDom, touchEvent) {
     };
 }
 
-// Mouse
+// Eventos de Desenho
 canvas.addEventListener('mousedown', (e) => { isDrawing = true; hasSignature = true; ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); });
 canvas.addEventListener('mousemove', (e) => { if (!isDrawing) return; ctx.lineTo(e.offsetX, e.offsetY); ctx.stroke(); });
 canvas.addEventListener('mouseup', () => isDrawing = false);
 canvas.addEventListener('mouseout', () => isDrawing = false);
 
-// Touch
 canvas.addEventListener('touchstart', (e) => { e.preventDefault(); isDrawing = true; hasSignature = true; const pos = getTouchPos(canvas, e); ctx.beginPath(); ctx.moveTo(pos.x, pos.y); }, { passive: false });
 canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (!isDrawing) return; const pos = getTouchPos(canvas, e); ctx.lineTo(pos.x, pos.y); ctx.stroke(); }, { passive: false });
 canvas.addEventListener('touchend', () => isDrawing = false);
@@ -69,23 +65,22 @@ btnSave.addEventListener('click', () => {
 
     // Feedback visual
     const originalText = btnSave.innerText;
-    btnSave.innerText = "Salvando no Bitrix...";
+    btnSave.innerText = "Salvando...";
     btnSave.disabled = true;
 
-    // Pega a imagem (Base64) e remove o cabeçalho inicial para o Bitrix aceitar
+    // Pega a imagem (Base64) e remove o cabeçalho
     const imageBase64 = canvas.toDataURL('image/png');
     const content = imageBase64.split(',')[1]; 
 
-    // --- MÁGICA: ENVIO DIRETO PELO NAVEGADOR ---
+    // --- CORREÇÃO: Usando o método task.item.addfile ---
+    // Este método é mais simples e aceita o arquivo direto (sem precisar subir pro disco antes)
     BX24.callMethod(
-        'task.comment.item.add',
+        'task.item.addfile', 
         {
-            TASKID: currentTaskId,
-            FIELDS: {
-                POST_MESSAGE: "Assinatura coletada via App",
-                FILES: [
-                    { "NAME": "assinatura_cliente.png", "CONTENT": content }
-                ]
+            TASK_ID: currentTaskId,
+            FILE: { 
+                NAME: "assinatura_cliente.png", 
+                CONTENT: content 
             }
         },
         function(result) {
@@ -94,15 +89,12 @@ btnSave.addEventListener('click', () => {
 
             if (result.error()) {
                 console.error(result.error());
-                alert("Erro ao salvar: " + result.error());
+                alert("Erro ao salvar: " + result.error().ex.error_description); // Mostra o erro detalhado
             } else {
-                alert("Sucesso! Assinatura anexada aos comentários.");
-                // Limpa o canvas para nova assinatura
+                alert("Sucesso! Assinatura anexada à tarefa.");
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 hasSignature = false;
-                
-                // Opcional: Fecha o app automaticamente
-                // BX24.closeApplication();
+                // BX24.closeApplication(); // Se quiser fechar após salvar
             }
         }
     );
