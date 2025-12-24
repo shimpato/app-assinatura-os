@@ -4,7 +4,7 @@ const btnClear = document.getElementById('btn-clear');
 const btnSave = document.getElementById('btn-save');
 
 let isDrawing = false;
-let hasSignature = false; // Controle para saber se já assinou
+let hasSignature = false;
 
 // Configuração do pincel
 ctx.lineWidth = 2;
@@ -29,7 +29,6 @@ canvas.addEventListener('mouseup', () => isDrawing = false);
 canvas.addEventListener('mouseout', () => isDrawing = false);
 
 // --- EVENTOS DE TOUCH (CELULAR) ---
-// O touch precisa de um cálculo diferente para pegar a posição exata
 function getTouchPos(canvasDom, touchEvent) {
     var rect = canvasDom.getBoundingClientRect();
     return {
@@ -39,7 +38,7 @@ function getTouchPos(canvasDom, touchEvent) {
 }
 
 canvas.addEventListener('touchstart', (e) => {
-    e.preventDefault(); // Impede a tela de rolar
+    e.preventDefault();
     isDrawing = true;
     hasSignature = true;
     const pos = getTouchPos(canvas, e);
@@ -65,26 +64,47 @@ btnClear.addEventListener('click', () => {
     hasSignature = false;
 });
 
-// Botão Salvar (Por enquanto apenas avisa)
-btnSave.addEventListener('click', () => {
+// Botão Salvar (CONECTADO AO BACKEND)
+btnSave.addEventListener('click', async () => {
     if (!hasSignature) {
         alert("Por favor, assine antes de salvar.");
         return;
     }
     
-    // Converte o desenho em imagem (Base64)
-    const dataURL = canvas.toDataURL('image/png');
-    
     // Feedback visual
+    const originalText = btnSave.innerText;
     btnSave.innerText = "Enviando...";
     btnSave.disabled = true;
 
-    console.log("Imagem gerada:", dataURL.substring(0, 50) + "..."); // Só para teste
-    
-    // Simulação de envio (vamos implementar o envio real no próximo passo)
-    setTimeout(() => {
-        alert("Assinatura capturada! (Pronto para enviar ao Backend)");
-        btnSave.innerText = "Salvar";
+    // Pega a imagem em formato texto (Base64)
+    const imageBase64 = canvas.toDataURL('image/png');
+
+    try {
+        // Envia para o nosso servidor na Vercel
+        const response = await fetch('/api/save-signature', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                imageBase64: imageBase64,
+                placementInfo: 'Teste Manual - Sem Bitrix ainda' 
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert("Sucesso! O servidor recebeu a assinatura.");
+            console.log("Resposta do servidor:", data);
+        } else {
+            alert("Erro ao salvar: " + (data.error || 'Erro desconhecido'));
+        }
+
+    } catch (error) {
+        console.error(error);
+        alert("Erro de conexão. Verifique o console.");
+    } finally {
+        // Restaura o botão
+        btnSave.innerText = originalText;
         btnSave.disabled = false;
-    }, 1000);
+    }
 });
