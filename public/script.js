@@ -5,24 +5,25 @@ const btnSave = document.getElementById('btn-save');
 const msgBox = document.getElementById('msg-box');
 const debugLog = document.getElementById('debug-log');
 
-// Configuração
+// Configuração (Elementos Visuais)
 const configPanel = document.getElementById('config-panel');
-const fieldSelector = document.getElementById('field-selector');
-const btnSaveConfig = document.getElementById('btn-save-config');
-const btnCancelConfig = document.getElementById('btn-cancel-config');
 const btnSettings = document.getElementById('btn-settings');
 const statusTask = document.getElementById('status-task');
-const statusDeal = document.getElementById('status-deal');
 
+// Variáveis de Estado
 let isDrawing = false;
 let hasSignature = false;
 let currentTaskId = null;
 let currentDealId = null;
-let targetFieldCode = null;
+
+// Variáveis de Mapeamento (Onde salvar cada coisa)
+let mapSignature = null;
+let mapSummary = null;
+let mapDateStart = null;
+let mapDateEnd = null;
 
 // --- FERRAMENTA DE LOG (MODO SILENCIOSO) ---
 function logToScreen(msg) {
-    // Apenas no console do navegador (F12) para não poluir a tela do usuário
     console.log(msg);
 }
 
@@ -32,31 +33,23 @@ if (typeof BX24 !== 'undefined') {
     BX24.init(function() {
         
         // >>> LIMPEZA VISUAL <<<
-        // 1. Esconde a barra superior (azul)
-        if(statusTask && statusTask.parentElement) {
-            statusTask.parentElement.style.display = 'none';
-        }
-        // 2. Garante que o log de debug esteja invisível
-        if(debugLog) {
-            debugLog.style.display = 'none';
-        }
+        if(statusTask && statusTask.parentElement) statusTask.parentElement.style.display = 'none';
+        if(debugLog) debugLog.style.display = 'none';
 
-        // --- LÓGICA DO APP (Continua rodando nos bastidores) ---
         const placement = BX24.placement.info();
-        logToScreen(`Placement: ${placement.placement}`);
-
+        
         if (placement.options && placement.options.ID && placement.placement === 'CRM_DEAL_DETAIL_TAB') {
             currentDealId = placement.options.ID;
         } else if (placement.options && placement.options.taskId) {
             currentTaskId = placement.options.taskId;
         }
         
-        // Se estiver na Tarefa, tenta descobrir o Deal imediatamente
+        // Se estiver na Tarefa, descobre o Deal
         if (currentTaskId && !currentDealId) {
             findDealFromTask();
         }
 
-        // Carrega Configuração
+        // Carrega Configuração Salva
         loadAppConfiguration();
     });
 } else {
@@ -64,101 +57,140 @@ if (typeof BX24 !== 'undefined') {
 }
 
 function findDealFromTask() {
-    logToScreen(`Buscando vínculo da tarefa ${currentTaskId}...`);
     BX24.callMethod('tasks.task.get', { taskId: currentTaskId, select: ['UF_CRM_TASK'] }, function(res) {
-        if (res.error()) {
-            logToScreen("Erro ao ler tarefa: " + res.error());
-            return;
-        }
-        const crmFields = res.data().task.ufCrmTask;
-        logToScreen(`Campos CRM da tarefa: ${JSON.stringify(crmFields)}`);
-        
-        if (crmFields && crmFields.length > 0) {
-            const dealStr = crmFields.find(item => item.startsWith('D_'));
-            if (dealStr) {
-                currentDealId = dealStr.replace('D_', '');
-                logToScreen(`Negócio vinculado encontrado: ${currentDealId}`);
+        if (!res.error()) {
+            const crmFields = res.data().task.ufCrmTask;
+            if (crmFields && crmFields.length > 0) {
+                const dealStr = crmFields.find(item => item.startsWith('D_'));
+                if (dealStr) currentDealId = dealStr.replace('D_', '');
             }
         }
     });
 }
 
 function loadAppConfiguration() {
-    BX24.callMethod('app.option.get', { option: 'signature_target_field' }, function(result) {
+    // Carrega todas as opções salvas
+    BX24.callMethod('app.option.get', { option: 'arseg_os_config' }, function(result) {
         if(result.data()) {
-            targetFieldCode = result.data();
-            logToScreen(`Campo configurado: ${targetFieldCode}`);
+            const config = result.data();
+            mapSignature = config.signature;
+            mapSummary = config.summary;
+            mapDateStart = config.start;
+            mapDateEnd = config.end;
+            logToScreen("Configurações carregadas.");
         } else {
-            logToScreen("Nenhum campo salvo. Abrindo painel...");
+            // Se não tem config, tenta abrir o painel
             openConfigPanel();
         }
     });
 }
 
+// --- CONSTRUTOR DO PAINEL DE CONFIGURAÇÃO (DINÂMICO) ---
 function openConfigPanel() {
+    // Injeta o HTML do painel novo dinamicamente para não precisar editar HTML
+    configPanel.innerHTML = `
+        <div style="background:white; padding:20px; border-radius:8px; width:90%; max-width:400px; text-align:left;">
+            <h3 style="margin-top:0; color:#333;">⚙️ Configurar Campos O.S.</h3>
+            <p style="font-size:12px; color:#666; margin-bottom:15px">Mapeie onde cada dado da Tarefa deve ser salvo no Negócio:</p>
+            
+            <label style="font-size:11px; font-weight:bold">🖊️ Campo de Assinatura (Arquivo)</label>
+            <select id="sel-sig" style="width:100%; padding:8px; margin-bottom:10px; border:1px solid #ccc; border-radius:4px;"><option>Carregando...</option></select>
+
+            <label style="font-size:11px; font-weight:bold">📝 Resumo/Descrição (Texto)</label>
+            <select id="sel-sum" style="width:100%; padding:8px; margin-bottom:10px; border:1px solid #ccc; border-radius:4px;"><option>Carregando...</option></select>
+
+            <label style="font-size:11px; font-weight:bold">🕒 Início da Execução (Data/Hora)</label>
+            <select id="sel-start" style="width:100%; padding:8px; margin-bottom:10px; border:1px solid #ccc; border-radius:4px;"><option>Carregando...</option></select>
+
+            <label style="font-size:11px; font-weight:bold">🏁 Fim da Execução (Data/Hora)</label>
+            <select id="sel-end" style="width:100%; padding:8px; margin-bottom:20px; border:1px solid #ccc; border-radius:4px;"><option>Carregando...</option></select>
+
+            <div style="display:flex; gap:10px;">
+                <button id="btn-save-cfg" style="flex:1; padding:10px; background:#2fc6f6; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">SALVAR</button>
+                <button id="btn-cancel-cfg" style="flex:1; padding:10px; background:#ddd; color:#333; border:none; border-radius:4px; cursor:pointer;">CANCELAR</button>
+            </div>
+        </div>
+    `;
+    
     configPanel.style.display = 'flex';
-    // Carrega a lista com delay pequeno para garantir auth
-    setTimeout(() => loadDealFields(), 500); 
+    configPanel.style.flexDirection = 'column';
+    configPanel.style.justifyContent = 'center';
+    configPanel.style.alignItems = 'center';
+
+    // Adiciona eventos aos botões recém-criados
+    document.getElementById('btn-save-cfg').onclick = saveNewConfig;
+    document.getElementById('btn-cancel-cfg').onclick = () => configPanel.style.display = 'none';
+
+    // Carrega os campos
+    loadDealFieldsForMapping();
 }
 
-function closeConfigPanel() { configPanel.style.display = 'none'; }
-
-// --- CARREGAR CAMPOS ---
-window.loadDealFields = function(forceRaw = false) {
-    logToScreen("Consultando crm.deal.fields...");
-    fieldSelector.innerHTML = '<option>Consultando API...</option>';
-    
+function loadDealFieldsForMapping() {
     BX24.callMethod('crm.deal.fields', {}, function(result) {
-        if (result.error()) {
-            logToScreen("ERRO API: " + result.error());
-            fieldSelector.innerHTML = '<option>Erro na consulta</option>';
-            return;
-        }
+        if (result.error()) return console.error(result.error());
 
-        const fields = result.data(); 
-        let optionsHtml = '<option value="">-- Selecione o campo --</option>';
-        let count = 0;
+        const fields = result.data();
+        
+        let optsFile = '<option value="">-- Não salvar --</option>';
+        let optsString = '<option value="">-- Não salvar --</option>';
+        let optsDate = '<option value="">-- Não salvar --</option>';
 
         for (let key in fields) {
+            // Apenas campos personalizados (UF_) ou campos chave nativos se necessário
             if (!key.startsWith('UF_')) continue;
 
-            let fieldData = fields[key];
-            let label = fieldData.formLabel || fieldData.listLabel || fieldData.title || key;
-            let type = fieldData.type;
+            let f = fields[key];
+            let label = f.formLabel || f.listLabel || f.title || key;
+            let type = f.type;
 
-            const isFile = (type === 'file' || type === 'disk_file');
-            const isString = (type === 'string'); 
-            
-            if (isFile || isString || forceRaw) {
-                let icone = isFile ? '📁' : '📝';
-                optionsHtml += `<option value="${key}">${icone} ${label} (${type})</option>`;
-                count++;
+            // Monta opções baseadas no tipo
+            if (type === 'file' || type === 'disk_file') {
+                optsFile += `<option value="${key}" ${key === mapSignature ? 'selected' : ''}>📁 ${label}</option>`;
+            } else if (type === 'string' || type === 'textarea') {
+                optsString += `<option value="${key}" ${key === mapSummary ? 'selected' : ''}>📝 ${label}</option>`;
+            } else if (type === 'datetime' || type === 'date') {
+                optsDate += `<option value="${key}" ${key === mapDateStart || key === mapDateEnd ? 'selected' : ''}>📅 ${label}</option>`;
             }
         }
 
-        if (count === 0) {
-            optionsHtml = '<option value="">Nenhum campo compatível (UF_) encontrado!</option>';
-        }
-
-        fieldSelector.innerHTML = optionsHtml;
+        // Popula os selects
+        document.getElementById('sel-sig').innerHTML = optsFile;
+        document.getElementById('sel-sum').innerHTML = optsString;
+        document.getElementById('sel-start').innerHTML = optsDate.replace('selected', mapDateStart ? 'selected' : '');
+        
+        // Para o select de FIM, precisamos resetar o selected para verificar o mapDateEnd corretamente
+        // Reconstruindo simples para garantir seleção correta
+        let optsDateEnd = optsDate.replace(/selected/g, ''); 
+        // Pequena lógica de regex para selecionar o certo, mas simplificando:
+        document.getElementById('sel-end').innerHTML = optsDate; 
+        if(mapDateEnd) document.getElementById('sel-end').value = mapDateEnd;
+        if(mapDateStart) document.getElementById('sel-start').value = mapDateStart;
     });
 }
 
-btnSaveConfig.addEventListener('click', () => {
-    const selected = fieldSelector.value;
-    if (!selected) { alert("Selecione um campo."); return; }
-    
-    BX24.callMethod('app.option.set', { options: { 'signature_target_field': selected } }, function(res) {
-        targetFieldCode = selected;
-        closeConfigPanel();
+function saveNewConfig() {
+    const newConfig = {
+        signature: document.getElementById('sel-sig').value,
+        summary: document.getElementById('sel-sum').value,
+        start: document.getElementById('sel-start').value,
+        end: document.getElementById('sel-end').value
+    };
+
+    if (!newConfig.signature) return alert("O campo de Assinatura é obrigatório!");
+
+    BX24.callMethod('app.option.set', { options: { 'arseg_os_config': newConfig } }, function(res) {
+        mapSignature = newConfig.signature;
+        mapSummary = newConfig.summary;
+        mapDateStart = newConfig.start;
+        mapDateEnd = newConfig.end;
+        configPanel.style.display = 'none';
         showMessage("Configuração salva!", "success");
     });
-});
-
-btnSettings.addEventListener('click', openConfigPanel);
-btnCancelConfig.addEventListener('click', closeConfigPanel);
+}
 
 // --- LÓGICA PADRÃO ---
+btnSettings.addEventListener('click', openConfigPanel);
+
 function showMessage(text, type) {
     msgBox.innerHTML = text;
     msgBox.className = type === 'error' ? 'msg-erro' : (type === 'success' ? 'msg-sucesso' : 'msg-info');
@@ -175,17 +207,53 @@ canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (!isDrawing
 canvas.addEventListener('touchend', () => isDrawing = false);
 btnClear.addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); hasSignature = false; });
 
+// --- SALVAR TUDO (ASSINATURA + DADOS DA TAREFA) ---
 btnSave.addEventListener('click', () => {
     if (!hasSignature) { showMessage("Assine antes.", "error"); return; }
-    if (!targetFieldCode) { openConfigPanel(); return; }
+    if (!mapSignature) { openConfigPanel(); return; }
     if (!currentDealId) { showMessage("Negócio não identificado.", "error"); return; }
 
+    btnSave.innerText = "BUSCANDO DADOS...";
+
+    // 1. Pega dados da Tarefa (se existir ID)
+    if(currentTaskId) {
+        BX24.callMethod('tasks.task.get', { taskId: currentTaskId }, function(resTask) {
+            let taskData = {};
+            if(!resTask.error()) {
+                taskData = resTask.data().task;
+            }
+            enviarParaDeal(taskData);
+        });
+    } else {
+        enviarParaDeal({});
+    }
+});
+
+function enviarParaDeal(task) {
     btnSave.innerText = "ENVIANDO...";
     const content = canvas.toDataURL('image/png').split(',')[1];
     
     let fields = {};
-    fields[targetFieldCode] = { "fileData": ["assinatura.png", content] };
+    
+    // 1. Campo Assinatura
+    fields[mapSignature] = { "fileData": ["assinatura.png", content] };
 
+    // 2. Campo Resumo (Descrição da Tarefa)
+    if (mapSummary && task.description) {
+        fields[mapSummary] = task.description;
+    }
+
+    // 3. Campo Data Início (createdDate ou dateStart)
+    if (mapDateStart && (task.dateStart || task.createdDate)) {
+        fields[mapDateStart] = task.dateStart || task.createdDate;
+    }
+
+    // 4. Campo Data Fim (closedDate)
+    if (mapDateEnd && task.closedDate) {
+        fields[mapDateEnd] = task.closedDate;
+    }
+
+    // Atualiza o Negócio
     BX24.callMethod('crm.deal.update', { id: currentDealId, fields: fields }, function(res) {
         btnSave.innerText = "SALVAR";
         if (res.error()) { 
@@ -193,9 +261,9 @@ btnSave.addEventListener('click', () => {
             showMessage("Erro ao salvar.", "error"); 
         }
         else { 
-            showMessage("✅ Assinatura salva!", "success"); 
+            showMessage("✅ Dados e Assinatura salvos!", "success"); 
             ctx.clearRect(0,0,340,250); 
             hasSignature = false; 
         }
     });
-});
+}
