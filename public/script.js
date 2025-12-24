@@ -102,7 +102,7 @@ function openConfigPanel() {
 
 function closeConfigPanel() { configPanel.style.display = 'none'; }
 
-// --- CARREGAR CAMPOS (DIAGNÓSTICO) ---
+// --- CARREGAR CAMPOS (CORRIGIDO PARA NÃO TRAVAR O DROPDOWN) ---
 window.loadDealFields = function(forceRaw = false) {
     logToScreen("Consultando crm.deal.userfield.list...");
     fieldSelector.innerHTML = '<option>Consultando API...</option>';
@@ -117,30 +117,37 @@ window.loadDealFields = function(forceRaw = false) {
         const fields = result.data();
         logToScreen(`Campos retornados: ${fields.length}`);
         
-        // Debug: Mostra os tipos de campos que vieram
-        if(fields.length > 0) {
-            const types = fields.map(f => `${f.FIELD_NAME}(${f.USER_TYPE_ID})`).join(', ');
-            logToScreen(`Tipos encontrados: ${types}`);
-        }
-
-        let optionsHtml = '<option value="">-- Selecione --</option>';
+        let optionsHtml = '<option value="">-- Selecione o campo --</option>';
         let count = 0;
 
         fields.forEach(field => {
-            // DIAGNÓSTICO: Vamos listar TUDO que for arquivo, ou se forçar, TUDO mesmo
-            // Bitrix as vezes usa 'file', 'disk_file', ou 'file_man'
+            // Tenta obter o label de forma segura (pode vir como string ou objeto)
+            let label = field.FIELD_NAME; 
+            if (field.EDIT_FORM_LABEL) {
+                if (typeof field.EDIT_FORM_LABEL === 'object') {
+                    // Pega PT, ou BR, ou o primeiro valor que tiver
+                    label = field.EDIT_FORM_LABEL.pt || field.EDIT_FORM_LABEL.br || Object.values(field.EDIT_FORM_LABEL)[0] || label;
+                } else if (typeof field.EDIT_FORM_LABEL === 'string') {
+                    label = field.EDIT_FORM_LABEL;
+                }
+            }
+
+            // Verifica tipos: File, Disk File ou String (string adicionada para garantir que apareça na lista caso não ache file)
             const isFile = (field.USER_TYPE_ID === 'file' || field.USER_TYPE_ID === 'disk_file' || field.USER_TYPE_ID === 'file_man');
+            const isString = (field.USER_TYPE_ID === 'string'); 
             
-            if (isFile || forceRaw) {
-                let label = field.EDIT_FORM_LABEL.pt || field.EDIT_FORM_LABEL.br || field.FIELD_NAME;
-                optionsHtml += `<option value="${field.FIELD_NAME}">${label} (${field.FIELD_NAME}) [${field.USER_TYPE_ID}]</option>`;
+            // Lista arquivos E strings para você poder escolher e testar
+            if (isFile || isString || forceRaw) {
+                optionsHtml += `<option value="${field.FIELD_NAME}">${label} (${field.USER_TYPE_ID})</option>`;
                 count++;
             }
         });
 
         if (count === 0) {
-            optionsHtml = '<option value="">Nenhum campo tipo ARQUIVO encontrado!</option>';
-            logToScreen("Atenção: A API retornou campos, mas nenhum parece ser 'file'.");
+            optionsHtml = '<option value="">Nenhum campo compatível encontrado!</option>';
+            logToScreen("Atenção: A API retornou campos, mas nenhum tipo 'file' ou 'string' compatível.");
+        } else {
+            logToScreen(`${count} campos carregados na lista.`);
         }
 
         fieldSelector.innerHTML = optionsHtml;
@@ -161,7 +168,7 @@ btnSaveConfig.addEventListener('click', () => {
 btnSettings.addEventListener('click', openConfigPanel);
 btnCancelConfig.addEventListener('click', closeConfigPanel);
 
-// --- LÓGICA PADRÃO (SIMPLIFICADA) ---
+// --- LÓGICA PADRÃO ---
 function showMessage(text, type) {
     msgBox.innerHTML = text;
     msgBox.className = type === 'error' ? 'msg-erro' : (type === 'success' ? 'msg-sucesso' : 'msg-info');
@@ -187,11 +194,19 @@ btnSave.addEventListener('click', () => {
     const content = canvas.toDataURL('image/png').split(',')[1];
     
     let fields = {};
+    // Estrutura para salvar arquivo no Bitrix
     fields[targetFieldCode] = { "fileData": ["assinatura.png", content] };
 
     BX24.callMethod('crm.deal.update', { id: currentDealId, fields: fields }, function(res) {
         btnSave.innerText = "SALVAR";
-        if (res.error()) { logToScreen("Erro update: " + res.error()); showMessage("Erro ao salvar", "error"); }
-        else { showMessage("✅ Assinatura salva!", "success"); ctx.clearRect(0,0,340,250); hasSignature = false; }
+        if (res.error()) { 
+            logToScreen("Erro update: " + res.error()); 
+            showMessage("Erro ao salvar: Verifique se o campo selecionado aceita arquivos.", "error"); 
+        }
+        else { 
+            showMessage("✅ Assinatura salva!", "success"); 
+            ctx.clearRect(0,0,340,250); 
+            hasSignature = false; 
+        }
     });
 });
