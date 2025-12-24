@@ -102,7 +102,7 @@ function openConfigPanel() {
 
 function closeConfigPanel() { configPanel.style.display = 'none'; }
 
-// --- CARREGAR CAMPOS (CORRIGIDO PARA NÃO TRAVAR O DROPDOWN) ---
+// --- CARREGAR CAMPOS (COM LÓGICA MELHORADA DO APP CNPJ) ---
 window.loadDealFields = function(forceRaw = false) {
     logToScreen("Consultando crm.deal.userfield.list...");
     fieldSelector.innerHTML = '<option>Consultando API...</option>';
@@ -121,24 +121,30 @@ window.loadDealFields = function(forceRaw = false) {
         let count = 0;
 
         fields.forEach(field => {
-            // Tenta obter o label de forma segura (pode vir como string ou objeto)
-            let label = field.FIELD_NAME; 
-            if (field.EDIT_FORM_LABEL) {
-                if (typeof field.EDIT_FORM_LABEL === 'object') {
-                    // Pega PT, ou BR, ou o primeiro valor que tiver
-                    label = field.EDIT_FORM_LABEL.pt || field.EDIT_FORM_LABEL.br || Object.values(field.EDIT_FORM_LABEL)[0] || label;
-                } else if (typeof field.EDIT_FORM_LABEL === 'string') {
-                    label = field.EDIT_FORM_LABEL;
+            // Lógica baseada no seu App CNPJ: Tenta pegar o Rótulo de várias formas
+            // O Bitrix retorna EDIT_FORM_LABEL ou LIST_COLUMN_LABEL, as vezes como objeto, as vezes string.
+            
+            let rawLabel = field.EDIT_FORM_LABEL || field.LIST_COLUMN_LABEL || field.FIELD_NAME;
+            let label = field.FIELD_NAME; // Fallback padrão
+
+            if (rawLabel) {
+                if (typeof rawLabel === 'object') {
+                    // Tenta pegar PT, BR, ou o primeiro valor disponível no objeto
+                    label = rawLabel.pt || rawLabel.br || rawLabel['pt-br'] || Object.values(rawLabel)[0];
+                } else {
+                    // Se for string direta
+                    label = rawLabel;
                 }
             }
 
-            // Verifica tipos: File, Disk File ou String (string adicionada para garantir que apareça na lista caso não ache file)
+            // Verifica tipos: File, Disk File ou String
             const isFile = (field.USER_TYPE_ID === 'file' || field.USER_TYPE_ID === 'disk_file' || field.USER_TYPE_ID === 'file_man');
             const isString = (field.USER_TYPE_ID === 'string'); 
             
-            // Lista arquivos E strings para você poder escolher e testar
+            // Lista arquivos E strings (para garantir que a lista não fique vazia se não houver campo file)
             if (isFile || isString || forceRaw) {
-                optionsHtml += `<option value="${field.FIELD_NAME}">${label} (${field.USER_TYPE_ID})</option>`;
+                let icone = isFile ? '📁' : '📝';
+                optionsHtml += `<option value="${field.FIELD_NAME}">${icone} ${label} (${field.USER_TYPE_ID})</option>`;
                 count++;
             }
         });
