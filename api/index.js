@@ -1,10 +1,11 @@
 const app = require('express')();
 const bodyParser = require('body-parser');
+const axios = require('axios');
 
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// --- HTML DA INTERFACE (Embutido para garantir o carregamento via POST) ---
+// --- HTML DA INTERFACE ---
 const htmlInterface = `
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -35,25 +36,23 @@ const htmlInterface = `
 </html>
 `;
 
-// Rota Principal (Aceita tanto GET quanto POST para abrir o app e resolver o erro 405)
+// Rota Principal
 app.all('/', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
     res.send(htmlInterface);
 });
 
-// Rota padrão API (Health Check)
+// Rota Health Check
 app.get('/api', (req, res) => res.json({ message: 'API Online.' }));
 
-// Rota para Validação e Instalação
+// Rota Instalação
 app.all('/install', (req, res) => {
-    // Se for POST, executa a lógica de instalação
     if (req.method === 'POST') {
         const appUrl = 'https://app-assinatura-os.vercel.app'; 
         res.setHeader('Content-Type', 'text/html');
         res.send(`
             <!DOCTYPE html>
-            <html>
-            <head><script src="//api.bitrix24.com/api/v1/"></script></head>
+            <html><head><script src="//api.bitrix24.com/api/v1/"></script></head>
             <body>
                 <script>
                     BX24.init(function(){
@@ -64,25 +63,57 @@ app.all('/install', (req, res) => {
                         }, function(){ BX24.installFinish(); });
                     });
                 </script>
-            </body>
-            </html>
+            </body></html>
         `);
     } else {
-        // Se for GET (Validador do Bitrix), só diz OK
         res.send('Instalador pronto.');
     }
 });
 
-// Rota de Salvar
-app.post('/api/save-signature', (req, res) => {
+// --- ROTA DE SALVAR ASSINATURA (Onde a mágica acontece) ---
+app.post('/api/save-signature', async (req, res) => {
     try {
         const { imageBase64, taskId, auth } = req.body;
-        console.log("Recebi assinatura para a tarefa:", taskId);
-        // Aqui entraremos com a lógica final de anexar
-        res.json({ success: true, message: 'Recebido' });
+
+        if (!imageBase64 || !taskId || !auth) {
+            console.error("Dados incompletos:", { temImagem: !!imageBase64, taskId, temAuth: !!auth });
+            return res.status(400).json({ error: 'Dados incompletos (Imagem, ID ou Auth faltando).' });
+        }
+
+        console.log(`Processando assinatura para Tarefa ID: ${taskId}`);
+
+        // 1. Limpar o Base64 (remover o cabeçalho "data:image/png;base64,")
+        const base64Content = imageBase64.split(',')[1];
+
+        // 2. Enviar para o Bitrix (Criar comentário com arquivo)
+        // Usamos o método task.comment.item.add
+        const bitrixUrl = `https://${auth.domain}/rest/task.comment.item.add`;
+        
+        const payload = {
+            auth: auth.access_token,
+            TASKID: taskId,
+            FIELDS: {
+                POST_MESSAGE: "Assinatura do Cliente coletada via App.",
+                // O truque para enviar arquivo direto via REST:
+                FILES: [
+                    { "NAME": "assinatura_cliente.png", "CONTENT": base64Content }
+                ]
+            }
+        };
+
+        const response = await axios.post(bitrixUrl, payload);
+
+        if (response.data.error) {
+            console.error("Erro do Bitrix:", response.data.error_description);
+            throw new Error(response.data.error_description);
+        }
+
+        console.log("Comentário criado com sucesso! ID:", response.data.result);
+        res.json({ success: true, commentId: response.data.result });
+
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Erro interno' });
+        console.error("Erro ao salvar:", error.message);
+        res.status(500).json({ error: 'Erro ao salvar no Bitrix: ' + error.message });
     }
 });
 
